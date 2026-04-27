@@ -3,41 +3,44 @@ import { Resend } from "resend";
 
 export async function POST(request) {
   try {
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const fromEmail =
-      process.env.RESEND_FROM_EMAIL ||
-      "Kare Bear Auto <appointments@karebearauto.com>";
-
-    if (!resendApiKey) {
-      return NextResponse.json(
-        { message: "Resend API key is not configured." },
-        { status: 500 }
-      );
-    }
-
-    if (!adminEmail) {
-      return NextResponse.json(
-        { message: "Admin email is not configured." },
-        { status: 500 }
-      );
-    }
-
-    const resend = new Resend(resendApiKey);
+    console.log("🚀 API HIT: send-appointment-email");
 
     const body = await request.json();
+
     const { name, email, phone, date, time, service, notes } = body;
 
     if (!name || !email || !phone || !date || !time || !service) {
+      console.error("❌ Missing fields:", body);
       return NextResponse.json(
         { message: "Missing required appointment details." },
         { status: 400 }
       );
     }
 
+    // 🔍 LOG ENV VARIABLES (CRITICAL FOR DEBUGGING)
+    console.log("ENV CHECK:");
+    console.log("API KEY:", process.env.RESEND_API_KEY ? "✅ EXISTS" : "❌ MISSING");
+    console.log("ADMIN EMAIL:", process.env.ADMIN_EMAIL);
+    console.log("FROM EMAIL:", process.env.RESEND_FROM_EMAIL);
+
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY is missing");
+    }
+
+    if (!process.env.ADMIN_EMAIL) {
+      throw new Error("ADMIN_EMAIL is missing");
+    }
+
+    if (!process.env.RESEND_FROM_EMAIL) {
+      throw new Error("RESEND_FROM_EMAIL is missing");
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    // 📩 SEND ADMIN EMAIL
     const adminResult = await resend.emails.send({
-      from: fromEmail,
-      to: adminEmail,
+      from: process.env.RESEND_FROM_EMAIL,
+      to: process.env.ADMIN_EMAIL,
       subject: "New Appointment Request",
       html: `
         <h2>New Appointment Request</h2>
@@ -45,14 +48,17 @@ export async function POST(request) {
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Phone:</strong> ${phone}</p>
         <p><strong>Service:</strong> ${service}</p>
-        <p><strong>Day/Date:</strong> ${date}</p>
+        <p><strong>Date:</strong> ${date}</p>
         <p><strong>Time:</strong> ${time}</p>
         <p><strong>Notes:</strong> ${notes || "No notes provided"}</p>
       `,
     });
 
+    console.log("✅ Admin email result:", adminResult);
+
+    // 📩 SEND CUSTOMER EMAIL
     const customerResult = await resend.emails.send({
-      from: fromEmail,
+      from: process.env.RESEND_FROM_EMAIL,
       to: email,
       subject: "We received your appointment request",
       html: `
@@ -63,26 +69,28 @@ export async function POST(request) {
 
         <h3>Your Request</h3>
         <p><strong>Service:</strong> ${service}</p>
-        <p><strong>Day/Date:</strong> ${date}</p>
+        <p><strong>Date:</strong> ${date}</p>
         <p><strong>Time:</strong> ${time}</p>
 
-        <p>You will receive another email once your appointment is approved or denied.</p>
+        <p>We’ll contact you once your appointment is reviewed.</p>
       `,
     });
 
-    return NextResponse.json(
-      {
-        message: "Appointment emails sent successfully.",
-        adminResult,
-        customerResult,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("Email send error:", error);
+    console.log("✅ Customer email result:", customerResult);
 
     return NextResponse.json(
-      { message: "Failed to send appointment emails.", error: error.message },
+      { message: "Emails sent successfully." },
+      { status: 200 }
+    );
+
+  } catch (error) {
+    console.error("🔥 EMAIL ERROR:", error);
+
+    return NextResponse.json(
+      {
+        message: "Failed to send emails",
+        error: error.message,
+      },
       { status: 500 }
     );
   }

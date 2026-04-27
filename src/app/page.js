@@ -1,65 +1,137 @@
+import Link from "next/link";
 import Image from "next/image";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+    <main className="home-page">
+      <section className="hero hero-pro">
+        <div className="hero-content">
+          <div className="logo-container">
             <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+              src="/kare-bear-logo.png"
+              alt="Kare Bear Auto Shop mascot"
+              width={420}
+              height={420}
+              className="hero-logo"
+              priority
             />
-            Deploy Now
-          </a>
+
+            <div className="logo-overlay">
+              <h1 className="logo-script">Kare Bear Auto</h1>
+              <p className="logo-subtitle">AUTO SHOP</p>
+            </div>
+          </div>
+
+          <p className="hero-label">Reliable Auto Care</p>
+
+          <h2 className="hero-main-title">
+            Quality service. Simple scheduling. Honest care.
+          </h2>
+
+          <p className="tagline">
+            Request your auto service appointment online and let Kare Bear Auto
+            Shop review your booking quickly and professionally.
+          </p>
+
+          <div className="button-group">
+            <Link href="/appointment" className="primary-btn hero-cta-btn">
+              Schedule Appointment
+            </Link>
+          </div>
+
+          <div className="hero-trust-row">
+            <span>Easy booking</span>
+            <span>Trusted service</span>
+            <span>Customer-focused care</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="about professional-section">
+        <div className="section-heading">
+          <p className="section-label">About Us</p>
+          <h2>Auto care built around trust and convenience</h2>
+        </div>
+
+        <p>
+          At Kare Bear Auto Shop, we make it easy to request service and get the
+          vehicle care you need. Our goal is simple: dependable work, clear
+          communication, and a smoother experience from request to appointment.
+        </p>
+      </section>
+
+      <section className="services professional-section">
+        <div className="section-heading">
+          <p className="section-label">Why Choose Us</p>
+          <h2>A better way to schedule auto service</h2>
+        </div>
+
+        <div className="card-grid">
+          <div className="card feature-card">
+            <div className="card-icon">📅</div>
+            <h3>Simple Scheduling</h3>
+            <p>
+              Submit your appointment request online without calling or waiting.
+            </p>
+          </div>
+
+          <div className="card feature-card">
+            <div className="card-icon">🔧</div>
+            <h3>Reliable Service</h3>
+            <p>
+              Get professional vehicle care handled with attention and respect.
+            </p>
+          </div>
+
+          <div className="card feature-card">
+            <div className="card-icon">✅</div>
+            <h3>Clear Updates</h3>
+            <p>
+              Receive confirmation once your appointment is reviewed by the shop.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="cta professional-cta">
+        <div className="section-heading">
+          <p className="section-label">Book Today</p>
+          <h2>Ready to request service?</h2>
+        </div>
+
+        <p>
+          Schedule your appointment request in just a few steps. Kare Bear Auto
+          Shop will review it and follow up.
+        </p>
+
+        <Link href="/appointment" className="primary-btn">
+          Request Appointment
+        </Link>
+      </section>
+
+      <footer className="footer">
+        <p className="footer-title logo-script">Kare Bear Auto Shop</p>
+
+        <p>Follow us</p>
+
+        <div className="socials">
           <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            href="https://www.instagram.com/kbear_auto_repair"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Documentation
+            Instagram
+          </a>
+
+          <a
+            href="https://www.snapchat.com/add/karebear7_7"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Snapchat
           </a>
         </div>
-      </main>
-    </div>
+      </footer>
+    </main>
   );
 }

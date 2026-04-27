@@ -1,13 +1,31 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL ||
+      "Kare Bear Auto <appointments@karebearauto.com>";
 
+    if (!resendApiKey) {
+      return NextResponse.json(
+        { message: "Resend API key is not configured." },
+        { status: 500 }
+      );
+    }
+
+    if (!adminEmail) {
+      return NextResponse.json(
+        { message: "Admin email is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const resend = new Resend(resendApiKey);
+
+    const body = await request.json();
     const { name, email, phone, date, time, service, notes } = body;
 
     if (!name || !email || !phone || !date || !time || !service) {
@@ -17,17 +35,8 @@ export async function POST(request) {
       );
     }
 
-    const adminEmail = process.env.ADMIN_EMAIL;
-
-    if (!adminEmail) {
-      return NextResponse.json(
-        { message: "Admin email is not configured." },
-        { status: 500 }
-      );
-    }
-
-    await resend.emails.send({
-      from: "Kare Bear Auto <appointments@karebearauto.com>",
+    const adminResult = await resend.emails.send({
+      from: fromEmail,
       to: adminEmail,
       subject: "New Appointment Request",
       html: `
@@ -36,14 +45,14 @@ export async function POST(request) {
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Phone:</strong> ${phone}</p>
         <p><strong>Service:</strong> ${service}</p>
-        <p><strong>Date:</strong> ${date}</p>
+        <p><strong>Day/Date:</strong> ${date}</p>
         <p><strong>Time:</strong> ${time}</p>
         <p><strong>Notes:</strong> ${notes || "No notes provided"}</p>
       `,
     });
 
-    await resend.emails.send({
-      from: "Kare Bear Auto <appointments@karebearauto.com>",
+    const customerResult = await resend.emails.send({
+      from: fromEmail,
       to: email,
       subject: "We received your appointment request",
       html: `
@@ -54,22 +63,26 @@ export async function POST(request) {
 
         <h3>Your Request</h3>
         <p><strong>Service:</strong> ${service}</p>
-        <p><strong>Date:</strong> ${date}</p>
+        <p><strong>Day/Date:</strong> ${date}</p>
         <p><strong>Time:</strong> ${time}</p>
 
-        <p>We’ll contact you once your appointment is reviewed.</p>
+        <p>You will receive another email once your appointment is approved or denied.</p>
       `,
     });
 
     return NextResponse.json(
-      { message: "Appointment emails sent successfully." },
+      {
+        message: "Appointment emails sent successfully.",
+        adminResult,
+        customerResult,
+      },
       { status: 200 }
     );
   } catch (error) {
     console.error("Email send error:", error);
 
     return NextResponse.json(
-      { message: "Failed to send appointment emails." },
+      { message: "Failed to send appointment emails.", error: error.message },
       { status: 500 }
     );
   }

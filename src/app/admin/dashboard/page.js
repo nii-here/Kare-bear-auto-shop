@@ -6,13 +6,15 @@ import Link from "next/link";
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth, db } from "../../../lib/firebase";
 
 const dayOptions = [
   "Monday",
@@ -51,8 +53,11 @@ const timeOptions = [
 export default function AdminDashboardPage() {
   const router = useRouter();
 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingAppointments, setLoadingAppointments] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
 
   const [availableDays, setAvailableDays] = useState([]);
@@ -60,14 +65,37 @@ export default function AdminDashboardPage() {
   const [selectedTime, setSelectedTime] = useState("09:00");
 
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem("isAdminLoggedIn");
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push("/admin/login");
+        return;
+      }
 
-    if (isLoggedIn !== "true") {
-      router.push("/admin/login");
-    }
+      try {
+        const adminRef = doc(db, "admins", user.uid);
+        const adminSnap = await getDoc(adminRef);
+
+        if (!adminSnap.exists()) {
+          await signOut(auth);
+          router.push("/admin/login");
+          return;
+        }
+
+        setIsAdmin(true);
+      } catch (error) {
+        console.error("Admin check failed:", error);
+        router.push("/admin/login");
+      } finally {
+        setAuthLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, [router]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+
     const appointmentsQuery = query(
       collection(db, "appointments"),
       orderBy("createdAt", "desc")
@@ -82,18 +110,20 @@ export default function AdminDashboardPage() {
         }));
 
         setAppointments(appointmentList);
-        setLoading(false);
+        setLoadingAppointments(false);
       },
       (error) => {
         console.error("Failed to load appointments:", error);
-        setLoading(false);
+        setLoadingAppointments(false);
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+
     const availabilityRef = doc(db, "settings", "availability");
 
     const unsubscribe = onSnapshot(availabilityRef, (snapshot) => {
@@ -108,15 +138,12 @@ export default function AdminDashboardPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isAdmin]);
 
   const saveAvailability = async (days, times) => {
     await setDoc(
       doc(db, "settings", "availability"),
-      {
-        days,
-        times,
-      },
+      { days, times },
       { merge: true }
     );
   };
@@ -163,7 +190,6 @@ export default function AdminDashboardPage() {
 
   const clearAvailability = async () => {
     const confirmClear = confirm("Clear all available days and times?");
-
     if (!confirmClear) return;
 
     try {
@@ -183,7 +209,7 @@ export default function AdminDashboardPage() {
       body: JSON.stringify({
         name: appointment.name,
         email: appointment.email,
-        date: appointment.date,
+        date: appointment.day || appointment.date,
         time: appointment.time,
         service: appointment.service,
         status: newStatus,
@@ -210,8 +236,8 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("isAdminLoggedIn");
+  const handleLogout = async () => {
+    await signOut(auth);
     router.push("/admin/login");
   };
 
@@ -219,10 +245,10 @@ export default function AdminDashboardPage() {
   const approvedCount = appointments.filter((a) => a.status === "Approved").length;
   const deniedCount = appointments.filter((a) => a.status === "Denied").length;
 
-  if (loading) {
+  if (authLoading || loadingAppointments) {
     return (
       <main className="dashboard-page">
-        <p style={{ textAlign: "center" }}>Loading appointments...</p>
+        <p style={{ textAlign: "center" }}>Loading dashboard...</p>
       </main>
     );
   }
@@ -413,7 +439,9 @@ export default function AdminDashboardPage() {
                           disabled={updatingId === appointment.id}
                           onClick={() => updateStatus(appointment, "Approved")}
                         >
-                          {updatingId === appointment.id ? "Updating..." : "Approve"}
+                          {updatingId === appointment.id
+                            ? "Updating..."
+                            : "Approve"}
                         </button>
 
                         <button
@@ -421,7 +449,9 @@ export default function AdminDashboardPage() {
                           disabled={updatingId === appointment.id}
                           onClick={() => updateStatus(appointment, "Denied")}
                         >
-                          {updatingId === appointment.id ? "Updating..." : "Deny"}
+                          {updatingId === appointment.id
+                            ? "Updating..."
+                            : "Deny"}
                         </button>
                       </>
                     ) : (

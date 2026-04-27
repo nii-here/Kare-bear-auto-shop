@@ -47,7 +47,6 @@ export default function AppointmentPage() {
 
         if (snapshot.exists()) {
           const data = snapshot.data();
-
           setAvailableDays(data.days || []);
           setAvailableTimes(data.times || []);
         } else {
@@ -122,9 +121,11 @@ export default function AppointmentPage() {
         createdAt: serverTimestamp(),
       };
 
+      // Save to Firestore
       await addDoc(collection(db, "appointments"), appointmentData);
 
-      await fetch("/api/send-appointment-email", {
+      // Send email
+      const emailResponse = await fetch("/api/send-appointment-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -139,6 +140,14 @@ export default function AppointmentPage() {
           notes: appointmentData.notes,
         }),
       });
+
+      const emailResult = await emailResponse.json();
+
+      console.log("Email response:", emailResponse.status, emailResult);
+
+      if (!emailResponse.ok) {
+        console.warn("Appointment saved, but email failed:", emailResult);
+      }
 
       setSubmitted(true);
       setFormData(initialFormData);

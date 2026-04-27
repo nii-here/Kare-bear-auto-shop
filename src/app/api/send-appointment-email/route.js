@@ -27,7 +27,7 @@ export async function POST(request) {
     }
 
     await resend.emails.send({
-      from: "Kare Bear Auto Shop <onboarding@resend.dev>",
+      from: "Kare Bear Auto <appointments@karebearauto.com>",
       to: adminEmail,
       subject: "New Appointment Request",
       html: `
@@ -43,7 +43,7 @@ export async function POST(request) {
     });
 
     await resend.emails.send({
-      from: "Kare Bear Auto Shop <onboarding@resend.dev>",
+      from: "Kare Bear Auto <appointments@karebearauto.com>",
       to: email,
       subject: "We received your appointment request",
       html: `

@@ -18,7 +18,7 @@ export async function POST(request) {
     const isApproved = status === "Approved";
 
     await resend.emails.send({
-      from: "Kare Bear Auto <onboarding@resend.dev>",
+      from: "Kare Bear Auto <appointments@karebearauto.com>",
       to: email,
       subject: isApproved
         ? "Your appointment request was approved"

@@ -12,6 +12,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "../../../lib/firebase";
@@ -59,6 +60,7 @@ export default function AdminDashboardPage() {
   const [appointments, setAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
+  const [viewFilter, setViewFilter] = useState("active");
 
   const [availableDays, setAvailableDays] = useState([]);
   const [availableTimes, setAvailableTimes] = useState([]);
@@ -140,6 +142,24 @@ export default function AdminDashboardPage() {
     return () => unsubscribe();
   }, [isAdmin]);
 
+  const formatDate = (timestamp) => {
+    if (!timestamp?.toDate) return "Not available";
+
+    return timestamp.toDate().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const filteredAppointments = appointments.filter((appointment) => {
+    if (viewFilter === "active") return !appointment.isArchived;
+    if (viewFilter === "archived") return appointment.isArchived;
+    return true;
+  });
+
   const saveAvailability = async (days, times) => {
     await setDoc(
       doc(db, "settings", "availability"),
@@ -217,20 +237,114 @@ export default function AdminDashboardPage() {
     });
   };
 
-  const updateStatus = async (appointment, newStatus) => {
+  const capturePayment = async (paymentIntentId) => {
+    const response = await fetch("/api/capture-payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ paymentIntentId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to capture payment.");
+    }
+
+    return data;
+  };
+
+  const cancelPayment = async (paymentIntentId) => {
+    const response = await fetch("/api/cancel-payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ paymentIntentId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to cancel payment.");
+    }
+
+    return data;
+  };
+
+  const approveAppointment = async (appointment) => {
+    try {
+      setUpdatingId(appointment.id);
+
+      if (appointment.stripePaymentIntentId) {
+        await capturePayment(appointment.stripePaymentIntentId);
+      }
+
+      await updateDoc(doc(db, "appointments", appointment.id), {
+        status: "Approved",
+        paymentStatus: appointment.stripePaymentIntentId ? "charged" : "none",
+      });
+
+      await sendStatusEmail(appointment, "Approved");
+    } catch (error) {
+      console.error("Failed to approve appointment:", error);
+      alert(error.message || "Failed to approve appointment.");
+    } finally {
+      setUpdatingId("");
+    }
+  };
+
+  const denyAppointment = async (appointment) => {
+    try {
+      setUpdatingId(appointment.id);
+
+      if (appointment.stripePaymentIntentId) {
+        await cancelPayment(appointment.stripePaymentIntentId);
+      }
+
+      await updateDoc(doc(db, "appointments", appointment.id), {
+        status: "Denied",
+        paymentStatus: appointment.stripePaymentIntentId
+          ? "authorization_canceled"
+          : "none",
+      });
+
+      await sendStatusEmail(appointment, "Denied");
+    } catch (error) {
+      console.error("Failed to deny appointment:", error);
+      alert(error.message || "Failed to deny appointment.");
+    } finally {
+      setUpdatingId("");
+    }
+  };
+
+  const archiveAppointment = async (appointment) => {
     try {
       setUpdatingId(appointment.id);
 
       await updateDoc(doc(db, "appointments", appointment.id), {
-        status: newStatus,
+        isArchived: true,
+        archivedAt: serverTimestamp(),
       });
-
-      if (newStatus === "Approved" || newStatus === "Denied") {
-        await sendStatusEmail(appointment, newStatus);
-      }
     } catch (error) {
-      console.error("Failed to update status:", error);
-      alert("Failed to update appointment status.");
+      console.error("Failed to archive appointment:", error);
+      alert("Failed to archive appointment.");
+    } finally {
+      setUpdatingId("");
+    }
+  };
+
+  const restoreAppointment = async (appointment) => {
+    try {
+      setUpdatingId(appointment.id);
+
+      await updateDoc(doc(db, "appointments", appointment.id), {
+        isArchived: false,
+      });
+    } catch (error) {
+      console.error("Failed to restore appointment:", error);
+      alert("Failed to restore appointment.");
     } finally {
       setUpdatingId("");
     }
@@ -241,9 +355,27 @@ export default function AdminDashboardPage() {
     router.push("/admin/login");
   };
 
-  const pendingCount = appointments.filter((a) => a.status === "Pending").length;
-  const approvedCount = appointments.filter((a) => a.status === "Approved").length;
-  const deniedCount = appointments.filter((a) => a.status === "Denied").length;
+  const pendingCount = appointments.filter(
+    (a) =>
+      !a.isArchived &&
+      (a.status === "Pending Approval" || a.status === "Pending")
+  ).length;
+
+  const approvedCount = appointments.filter(
+    (a) => !a.isArchived && a.status === "Approved"
+  ).length;
+
+  const deniedCount = appointments.filter(
+    (a) => !a.isArchived && a.status === "Denied"
+  ).length;
+
+  const archivedCount = appointments.filter((a) => a.isArchived).length;
+
+  const getStatusClass = (status) => {
+    if (status === "Approved") return "status-approved";
+    if (status === "Denied") return "status-denied";
+    return "status-pending";
+  };
 
   if (authLoading || loadingAppointments) {
     return (
@@ -260,7 +392,9 @@ export default function AdminDashboardPage() {
           <div className="dashboard-hero-text">
             <p className="dashboard-eyebrow">Admin Dashboard</p>
             <h1>Kare Bear Auto Shop</h1>
-            <p>Manage appointments, requests, and booking availability.</p>
+            <p>
+              Manage appointments, requests, payments, and booking availability.
+            </p>
           </div>
 
           <div className="dashboard-hero-actions">
@@ -275,7 +409,7 @@ export default function AdminDashboardPage() {
 
         <section className="dashboard-stats">
           <div className="stat-card">
-            <span className="stat-label">Pending</span>
+            <span className="stat-label">Pending Review</span>
             <strong>{pendingCount}</strong>
           </div>
 
@@ -287,6 +421,11 @@ export default function AdminDashboardPage() {
           <div className="stat-card">
             <span className="stat-label">Denied</span>
             <strong>{deniedCount}</strong>
+          </div>
+
+          <div className="stat-card">
+            <span className="stat-label">Archived</span>
+            <strong>{archivedCount}</strong>
           </div>
         </section>
 
@@ -347,7 +486,10 @@ export default function AdminDashboardPage() {
                 ))}
               </select>
 
-              <button className="dashboard-primary-btn small-btn" onClick={addTime}>
+              <button
+                className="dashboard-primary-btn small-btn"
+                onClick={addTime}
+              >
                 Add Time
               </button>
             </div>
@@ -381,22 +523,49 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {appointments.length === 0 ? (
+          <div className="dashboard-filter-row">
+            <button
+              className={`filter-btn ${viewFilter === "active" ? "selected" : ""}`}
+              onClick={() => setViewFilter("active")}
+            >
+              Active
+            </button>
+
+            <button
+              className={`filter-btn ${
+                viewFilter === "archived" ? "selected" : ""
+              }`}
+              onClick={() => setViewFilter("archived")}
+            >
+              Archived
+            </button>
+
+            <button
+              className={`filter-btn ${viewFilter === "all" ? "selected" : ""}`}
+              onClick={() => setViewFilter("all")}
+            >
+              All
+            </button>
+          </div>
+
+          {filteredAppointments.length === 0 ? (
             <div className="request-card">
-              <h3>No appointment requests yet.</h3>
+              <h3>No appointment requests found.</h3>
               <p className="request-service">
-                New customer requests will appear here.
+                Requests will appear here based on your selected filter.
               </p>
             </div>
           ) : (
             <div className="request-grid">
-              {appointments.map((appointment) => (
+              {filteredAppointments.map((appointment) => (
                 <article className="request-card" key={appointment.id}>
                   <div className="request-card-top">
                     <h3>{appointment.name}</h3>
 
                     <span
-                      className={`status-badge status-${appointment.status.toLowerCase()}`}
+                      className={`status-badge ${getStatusClass(
+                        appointment.status
+                      )}`}
                     >
                       {appointment.status}
                     </span>
@@ -416,6 +585,10 @@ export default function AdminDashboardPage() {
                       {appointment.phone}
                     </p>
                     <p>
+                      <span>Booked</span>
+                      {formatDate(appointment.createdAt)}
+                    </p>
+                    <p>
                       <span>Day</span>
                       {appointment.day || appointment.date}
                     </p>
@@ -423,6 +596,21 @@ export default function AdminDashboardPage() {
                       <span>Time</span>
                       {appointment.time}
                     </p>
+                    <p>
+                      <span>Payment</span>
+                      {appointment.paymentStatus || "Not available"}
+                    </p>
+                    {appointment.depositAmount && (
+                      <p>
+                        <span>Deposit</span>${appointment.depositAmount}
+                      </p>
+                    )}
+                    {appointment.isArchived && (
+                      <p>
+                        <span>Archived</span>
+                        {formatDate(appointment.archivedAt)}
+                      </p>
+                    )}
                     {appointment.notes && (
                       <p>
                         <span>Notes</span>
@@ -432,36 +620,55 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <div className="request-actions">
-                    {appointment.status === "Pending" ? (
+                    {appointment.status === "Pending Approval" ||
+                    appointment.status === "Pending" ? (
                       <>
                         <button
                           className="approve-btn"
                           disabled={updatingId === appointment.id}
-                          onClick={() => updateStatus(appointment, "Approved")}
+                          onClick={() => approveAppointment(appointment)}
                         >
                           {updatingId === appointment.id
-                            ? "Updating..."
-                            : "Approve"}
+                            ? "Processing..."
+                            : "Approve & Charge"}
                         </button>
 
                         <button
                           className="deny-btn"
                           disabled={updatingId === appointment.id}
-                          onClick={() => updateStatus(appointment, "Denied")}
+                          onClick={() => denyAppointment(appointment)}
                         >
                           {updatingId === appointment.id
-                            ? "Updating..."
+                            ? "Processing..."
                             : "Deny"}
                         </button>
                       </>
-                    ) : (
+                    ) : appointment.isArchived ? (
                       <button
                         className="edit-btn"
                         disabled={updatingId === appointment.id}
-                        onClick={() => updateStatus(appointment, "Pending")}
+                        onClick={() => restoreAppointment(appointment)}
                       >
-                        {updatingId === appointment.id ? "Updating..." : "Edit"}
+                        {updatingId === appointment.id
+                          ? "Restoring..."
+                          : "Restore"}
                       </button>
+                    ) : (
+                      <>
+                        <button className="edit-btn" disabled>
+                          Finalized
+                        </button>
+
+                        <button
+                          className="dashboard-outline-btn"
+                          disabled={updatingId === appointment.id}
+                          onClick={() => archiveAppointment(appointment)}
+                        >
+                          {updatingId === appointment.id
+                            ? "Archiving..."
+                            : "Archive"}
+                        </button>
+                      </>
                     )}
                   </div>
                 </article>

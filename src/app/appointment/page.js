@@ -10,6 +10,17 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  CardElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+);
 
 const services = [
   "Oil Change",
@@ -30,6 +41,17 @@ const initialFormData = {
 };
 
 export default function AppointmentPage() {
+  return (
+    <Elements stripe={stripePromise}>
+      <AppointmentForm />
+    </Elements>
+  );
+}
+
+function AppointmentForm() {
+  const stripe = useStripe();
+  const elements = useElements();
+
   const [formData, setFormData] = useState(initialFormData);
   const [availableDays, setAvailableDays] = useState([]);
   const [availableTimes, setAvailableTimes] = useState([]);
@@ -91,6 +113,7 @@ export default function AppointmentPage() {
     if (!formData.service) return "Please select a service.";
     if (!formData.day) return "Please select an available day.";
     if (!formData.time) return "Please select an available time.";
+    if (!stripe || !elements) return "Payment system is still loading.";
 
     return "";
   };
@@ -109,6 +132,46 @@ export default function AppointmentPage() {
       setIsSubmitting(true);
       setError("");
 
+      const paymentResponse = await fetch("/api/create-payment-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          service: formData.service,
+        }),
+      });
+
+      const paymentData = await paymentResponse.json();
+
+      if (!paymentResponse.ok) {
+        throw new Error(paymentData.message || "Unable to start payment.");
+      }
+
+      const cardElement = elements.getElement(CardElement);
+
+      const confirmResult = await stripe.confirmCardPayment(
+        paymentData.clientSecret,
+        {
+          payment_method: {
+            card: cardElement,
+            billing_details: {
+              name: formData.name.trim(),
+              email: formData.email.trim(),
+              phone: formData.phone.trim(),
+            },
+          },
+        }
+      );
+
+      if (confirmResult.error) {
+        setError(confirmResult.error.message || "Please check your card details.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const appointmentData = {
         name: formData.name.trim(),
         email: formData.email.trim(),
@@ -117,14 +180,15 @@ export default function AppointmentPage() {
         time: formData.time,
         service: formData.service,
         notes: formData.notes.trim(),
-        status: "Pending",
+        status: "Pending Approval",
+        paymentStatus: "authorized",
+        depositAmount: 20,
+        stripePaymentIntentId: paymentData.paymentIntentId,
         createdAt: serverTimestamp(),
       };
 
-      // Save to Firestore
       await addDoc(collection(db, "appointments"), appointmentData);
 
-      // Send email
       const emailResponse = await fetch("/api/send-appointment-email", {
         method: "POST",
         headers: {
@@ -149,11 +213,16 @@ export default function AppointmentPage() {
         console.warn("Appointment saved, but email failed:", emailResult);
       }
 
-      setSubmitted(true);
+      if (cardElement) {
+        cardElement.clear();
+      }
+
       setFormData(initialFormData);
+      setSubmitted(true);
+      
     } catch (err) {
       console.error("Appointment submit error:", err);
-      setError("Unable to submit appointment request. Please try again.");
+      setError(err.message || "Unable to submit appointment request.");
     } finally {
       setIsSubmitting(false);
     }
@@ -166,8 +235,9 @@ export default function AppointmentPage() {
           <p className="appointment-eyebrow">Schedule Service</p>
           <h1>Request an Appointment</h1>
           <p className="appointment-subtitle">
-            Choose your service, select an available day and time, and Kare Bear
-            Auto Shop will review your request.
+            Choose your service, select an available day and time, and authorize
+            a non-refundable $20 deposit. You are only charged if the appointment
+            is approved.
           </p>
         </div>
 
@@ -178,8 +248,9 @@ export default function AppointmentPage() {
             <h2>Request Sent</h2>
 
             <p>
-              Your appointment request has been submitted successfully. You will
-              receive an email once your request is approved or denied.
+              Your appointment request was submitted successfully. Your card was
+              authorized, but it will only be charged if the appointment is
+              approved.
             </p>
 
             <Link
@@ -318,6 +389,32 @@ export default function AppointmentPage() {
                 />
               </div>
 
+              <div className="appointment-input-group">
+                <label>Payment Authorization</label>
+                <div className="stripe-card-box">
+                  <CardElement
+                    options={{
+                      style: {
+                        base: {
+                          color: "#ffffff",
+                          fontSize: "16px",
+                          "::placeholder": {
+                            color: "#9aa5b3",
+                          },
+                        },
+                        invalid: {
+                          color: "#ff7b7b",
+                        },
+                      },
+                    }}
+                  />
+                </div>
+                <p className="payment-note">
+                  A $20 deposit will only be charged if your appointment is
+                  approved.
+                </p>
+              </div>
+
               <button
                 type="submit"
                 className="appointment-submit-btn"
@@ -325,10 +422,13 @@ export default function AppointmentPage() {
                   isSubmitting ||
                   loadingAvailability ||
                   availableDays.length === 0 ||
-                  availableTimes.length === 0
+                  availableTimes.length === 0 ||
+                  !stripe
                 }
               >
-                {isSubmitting ? "Submitting..." : "Submit Appointment Request"}
+                {isSubmitting
+                  ? "Submitting..."
+                  : "Authorize $20 & Submit Request"}
               </button>
             </form>
 
